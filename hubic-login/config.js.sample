@@ -1,0 +1,4 @@
+module.exports = {
+	clientId: '{Your hubiC client id}',
+    clientSecret: '{Your hubiC client secret}'
+};

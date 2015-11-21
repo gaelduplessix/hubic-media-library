@@ -1,0 +1,15 @@
+events {
+    worker_connections  4096;  ## Default: 1024
+}
+
+http {
+    server {
+        listen       80;
+        server_name  localhost;
+
+        location / {
+            proxy_pass						{OpenStack API Endpoint retrieved using hubic-login};
+            proxy_set_header X-Auth-Token	{OpenStack API Token retrieved using hubic-login};
+        }
+    }
+}
