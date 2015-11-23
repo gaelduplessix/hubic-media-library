@@ -1,0 +1,5 @@
+media_encoder:
+    build: ./
+    volumes:
+        - ./:/app
+    command: /app/run.sh

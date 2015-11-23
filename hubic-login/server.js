@@ -43,7 +43,12 @@ app.get('/callback', function(req, res) {
     function saveToken(error, result) {        
         if (error) {
             console.log('Access Token Error', error.message);
-        }        
+            return;
+        }
+        if (!result) {
+            console.log('Invalid access token');
+            return;
+        }
         var oauthToken = oauth2.accessToken.create(result);
         console.log('Token created !', oauthToken.token.access_token);
         console.log('Getting OpenStack API credentials...');
