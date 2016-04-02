@@ -32,7 +32,7 @@ function apiRequestFile(method, path, headers) {
     return request({
         method: method,
         // Encode URI to prevent errors with accents
-        uri: config.apiURL + '/default/' + encodeURIComponent(path),
+        uri: config.apiURL + '/default' + encodeURIComponent(path),
         headers: _.assign({
             'X-Auth-Token': config.accessToken
         }, headers),
@@ -46,7 +46,7 @@ function apiSendFile(file, path, headers) {
         fs.createReadStream(file).pipe(request({
             method: 'PUT',
             // Encode URI to prevent errors with accents
-            uri: config.apiURL + '/default/' + encodeURIComponent(path),
+            uri: config.apiURL + '/default' + encodeURIComponent(path),
             headers: _.assign({
                 'X-Auth-Token': config.accessToken,
                 'X-Object-Meta-Hubiclocalcreationdate': 0,
@@ -94,14 +94,18 @@ function getIndex() {
 
 /**
  * Retrieves files index from a previous cached version, or request it again
+ * Note: Cache is mainly for dev purpose, usually you always want to refresh it
+ * to avoid re-generating existing media
  */
-function retrieveIndex() {
+function retrieveIndex(useCache) {
     return new Promise(function (resolve, reject) {
         var index;
 
-        try {
-            var index = fs.readFileSync('filesIndex.json', {encoding: 'utf-8'});
-        } catch (e) {}
+        if (useCache) {
+            try {
+                var index = fs.readFileSync('filesIndex.json', {encoding: 'utf-8'});
+            } catch (e) {}
+        }
 
         if (index) {
             resolve(JSON.parse(index));
@@ -146,13 +150,13 @@ function createDirectory(path) {
  * Creates the directory that will contain all encoded medias
  */
 function createLibraryDirectory() {
-    getMeta(config.libraryDirectory).then(function (meta) {
+    return getMeta(config.libraryDirectory).then(function (meta) {
         if (!meta) {
-            createDirectory(config.libraryDirectory).then(function () {
+            return createDirectory(config.libraryDirectory).then(function () {
                 console.log('Directory created successfully !');
-            })
+            });
         } else if (meta['content-type'] !== 'application/directory') {
-            console.log('Error: Cannot create library directory: filename is already used');
+            throw Error('Error: Cannot create library directory: filename is already used');
         } else {
             console.log('Media library directory already exists');
         }
@@ -163,8 +167,6 @@ function createLibraryDirectory() {
  * Generate lighter image files for a given list of existing images
  */
 function generateImages(images) {
-    // Debug: only process first 10 images
-    //images = images.splice(0, 10);
     console.log('Start generation of ' + images.length + ' images');
 
     // Run generation of images 3 at a time
@@ -177,15 +179,14 @@ function generateImages(images) {
         }
 
         // Download image
-        apiRequestFile('GET', image.name).then(function (res) {
-            var tmpImage = config.tmpImagesDirectory + '/' + uuid.v4() + '.jpg',
-                destDirectory = config.libraryDirectory + '/' + pathInfo.dir;
+        apiRequestFile('GET', '/' + image.name).then(function (res) {
+            var tmpImage = config.tmpImagesDirectory + '/' + uuid.v4() + '.jpg';
 
             fs.writeFileSync(tmpImage, res);
 
             // Generate file formats in parallel
             async.each(config.imagesFormats, function (format, formatDone) {
-                var newPath = destDirectory + '/' + pathInfo.name + format.suffix + '.jpg',
+                var newPath = getEncodedImagePath(image.name, format.suffix),
                     tmpFile = config.tmpImagesDirectory + '/' + uuid.v4() + '.jpg';
 
                 var resizeJob = sharp(tmpImage);
@@ -204,6 +205,7 @@ function generateImages(images) {
                         return formatDone();
                     }
                     // Send image to server
+                    console.log('Image sent:', newPath);
                     apiSendFile(tmpFile, newPath).then(function (res) {
                         // Delete tmp file
                         fs.unlinkSync(tmpFile);
@@ -222,24 +224,56 @@ function generateImages(images) {
     });
 }
 
+function isImage(filename) {
+    var extension = path.extname(filename).substr(1).toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp'].indexOf(extension) !== -1;
+}
+
+function getEncodedImagePath(file, formatSuffix) {
+    var pathInfo = path.parse(file);
+    var destDirectory = config.libraryDirectory + '/' + pathInfo.dir;
+    return destDirectory + '/' + pathInfo.name + formatSuffix + '.jpg';
+}
+
+function hasEncodedVersion(file, index) {
+    var hasAllFormats = true;
+
+    if (isImage(file)) {
+        // Check if all images formats exist
+        return _.every(config.imagesFormats, function (format) {
+            var newPath = getEncodedImagePath(file, format.suffix);
+            return !!_.find(index, function (file) {
+                return ('/' + file.name) === newPath;
+            });
+        });
+    }
+    return false;
+}
+
 // Entry point
 
-// Retrieves the files index and extract images
-retrieveIndex().then(function (index) {
+// Ensures the library directory exists
+createLibraryDirectory().then(function() {
+    // Retrieves the files index and extract images
+    return retrieveIndex(true);
+}).then(function (index) {
     var i, j, l, m = config.srcDirectories.length;
-    var filename, extension;
     var images = [];
 
+    // Retrieve image files within the index
     for (i = 0, l = index.length; i < l; ++i) {
         for (j = 0; j < m; ++j) {
+            // Encode only files within the srcDirectories
             if (index[i].name.indexOf(config.srcDirectories[j]) === 0) {
-                filename = index[i].name;
-                extension = path.extname(filename).substr(1).toLowerCase();
-                if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].indexOf(extension) !== -1) {
+                if (isImage(index[i].name)) {
                     images.push(index[i]);
                 }
             }
         }
     }
+    // Filter images that have already been generated
+    images = _.filter(images, function (image) {
+        return !hasEncodedVersion(image.name, index);
+    });
     generateImages(images);
 });
