@@ -9,12 +9,24 @@
         [ng\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {
             display: none !important;
         }
+
+        a {
+            cursor: pointer;
+        }
     </style>
 
 </head>
-<body ng-controller="MainController as main">
+<body ng-controller="MainController as m">
     <div class="container">
-
+        <h1>Directory: {{m.currentDirectory.name}}</h1>
+        <ul>
+            <li ng-repeat="file in m.currentDirectory.children">
+                <a ng-if="file.content_type === 'application/directory'" ng-click="m.currentDirectory = file">{{ file.name }}</a>
+                <div ng-if="m.isImage(file)">
+                    <img ng-src="{{ m.getImageUrl(file) }}">
+                </div>
+            </li>
+        </ul>
     </div>
     <script src="jspm_packages/system.js"></script>
     <script src="config.js"></script>
