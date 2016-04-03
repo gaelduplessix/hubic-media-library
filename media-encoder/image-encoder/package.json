@@ -1,0 +1,15 @@
+{
+  "name": "image-encoder",
+  "version": "1.0.0",
+  "description": "Image-encoder process",
+  "main": "src/encoder.js",
+  "scripts": {
+    "start": "node src/encoder.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "kue": "^0.10.5"
+  }
+}

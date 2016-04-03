@@ -1,4 +1,3 @@
 config.js
-node_modules
 filesIndex.json
-tmp
+npm-debug.log

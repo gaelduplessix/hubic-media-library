@@ -1,3 +1,5 @@
+'use strict';
+
 module.exports = {
     // Src config
     apiURL: '{{OpenStack API URL}}',

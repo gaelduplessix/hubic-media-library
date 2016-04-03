@@ -1,5 +1,22 @@
-media_encoder:
-    build: ./
+version: '2'
+
+services:
+  redis:
+    image: redis
+
+  scheduler:
+    build: ./scheduler
     volumes:
-        - ./:/app
-    command: /app/run.sh
+      - ./scheduler/src:/usr/src/app/src
+      - ./config:/usr/src/config
+    links:
+      - redis
+    ports:
+      - 3000:3000
+
+  image_generator:
+    build: ./image-encoder
+    volumes:
+      - ./image-encoder/src:/usr/src/app/src
+    links:
+      - redis

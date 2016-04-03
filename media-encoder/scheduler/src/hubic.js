@@ -1,15 +1,9 @@
-// Dependencies
-var request = require('request-promise'),
-    _ = require('lodash'),
-    async = require('async'),
-    fs = require('fs'),
-    path = require('path'),
-    sharp = require('sharp'),
-    uuid = require('node-uuid');
+'use strict';
 
-//request.debug = true;
-
-var config = require('./config.js');
+let request = require('request-promise');
+let _ = require('lodash');
+let fs = require('fs');
+let config = require('/usr/src/config/config.js');
 
 function apiRequest(method, path, queryParams, headers) {
     headers = headers || {};
@@ -103,7 +97,7 @@ function retrieveIndex(useCache) {
 
         if (useCache) {
             try {
-                var index = fs.readFileSync('filesIndex.json', {encoding: 'utf-8'});
+                var index = fs.readFileSync(__dirname + '/filesIndex.json', {encoding: 'utf-8'});
             } catch (e) {}
         }
 
@@ -111,7 +105,7 @@ function retrieveIndex(useCache) {
             resolve(JSON.parse(index));
         } else {
             getIndex().then(function (index) {
-                fs.writeFile('filesIndex.json', JSON.stringify(index));
+                fs.writeFile(__dirname + '/filesIndex.json', JSON.stringify(index));
                 resolve(index);
             });
         }
@@ -163,117 +157,6 @@ function createLibraryDirectory() {
     });
 }
 
-/**
- * Generate lighter image files for a given list of existing images
- */
-function generateImages(images) {
-    console.log('Start generation of ' + images.length + ' images');
-
-    // Run generation of images 3 at a time
-    async.eachLimit(images, 3, function (image, imageDone) {
-        // Decompose path
-        var pathInfo = path.parse(image.name);
-
-        if (!pathInfo.dir || !pathInfo.name) {
-            return imageDone('Invalid path: ' + image.name);
-        }
-
-        // Download image
-        apiRequestFile('GET', '/' + image.name).then(function (res) {
-            var tmpImage = config.tmpImagesDirectory + '/' + uuid.v4() + '.jpg';
-
-            fs.writeFileSync(tmpImage, res);
-
-            // Generate file formats in parallel
-            async.each(config.imagesFormats, function (format, formatDone) {
-                var newPath = getEncodedImagePath(image.name, format.suffix),
-                    tmpFile = config.tmpImagesDirectory + '/' + uuid.v4() + '.jpg';
-
-                var resizeJob = sharp(tmpImage);
-                if (format.width || format.height) {
-                    resizeJob.resize(format.width, format.height);
-                }
-                if (format.max) {
-                    resizeJob.max();
-                }
-                if (format.quality) {
-                    resizeJob.quality(format.quality);
-                }
-                resizeJob.toFile(tmpFile, function (err) {
-                    if (err) {
-                        console.log('Error when generating image: ', err);
-                        return formatDone();
-                    }
-                    // Send image to server
-                    console.log('Image sent:', newPath);
-                    apiSendFile(tmpFile, newPath).then(function (res) {
-                        // Delete tmp file
-                        fs.unlinkSync(tmpFile);
-                        formatDone();
-                    });
-                });
-            }, function (error) {
-                // Delete tmp image
-                fs.unlinkSync(tmpImage);
-                console.log('Image done', image.name);
-                imageDone();
-            });
-        });
-    }, function (error) {
-        console.log('Done !', error);
-    });
-}
-
-function isImage(filename) {
-    var extension = path.extname(filename).substr(1).toLowerCase();
-    return ['jpg', 'jpeg', 'png', 'gif', 'bmp'].indexOf(extension) !== -1;
-}
-
-function getEncodedImagePath(file, formatSuffix) {
-    var pathInfo = path.parse(file);
-    var destDirectory = config.libraryDirectory + '/' + pathInfo.dir;
-    return destDirectory + '/' + pathInfo.name + formatSuffix + '.jpg';
-}
-
-function hasEncodedVersion(file, index) {
-    var hasAllFormats = true;
-
-    if (isImage(file)) {
-        // Check if all images formats exist
-        return _.every(config.imagesFormats, function (format) {
-            var newPath = getEncodedImagePath(file, format.suffix);
-            return !!_.find(index, function (file) {
-                return ('/' + file.name) === newPath;
-            });
-        });
-    }
-    return false;
-}
-
-// Entry point
-
-// Ensures the library directory exists
-createLibraryDirectory().then(function() {
-    // Retrieves the files index and extract images
-    return retrieveIndex(true);
-}).then(function (index) {
-    var i, j, l, m = config.srcDirectories.length;
-    var images = [];
-
-    // Retrieve image files within the index
-    for (i = 0, l = index.length; i < l; ++i) {
-        for (j = 0; j < m; ++j) {
-            // Encode only files within the srcDirectories
-            if (index[i].name.indexOf(config.srcDirectories[j]) === 0) {
-                if (isImage(index[i].name)) {
-                    images.push(index[i]);
-                }
-            }
-        }
-    }
-    // Filter images that have already been generated
-    images = _.filter(images, function (image) {
-        return !hasEncodedVersion(image.name, index);
-    });
-    generateImages(images);
-});
+module.exports = {
+    getIndex, retrieveIndex, createLibraryDirectory
+};
